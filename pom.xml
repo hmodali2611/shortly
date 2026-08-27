@@ -19,6 +19,7 @@
 
     <properties>
         <java.version>25</java.version>
+        <postgresql.version>42.7.12</postgresql.version>
         <springdoc.version>2.8.13</springdoc.version>
         <spotless.version>2.46.1</spotless.version>
         <spotbugs.version>4.9.8.2</spotbugs.version>
