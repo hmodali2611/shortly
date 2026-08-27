@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shortener}
+      POSTGRES_USER: ${DATABASE_USERNAME:-shortener}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-shortener}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-shortener}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-shortener}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-shortener}
+      REDIS_HOST: redis
+      APP_API_KEYS: ${APP_API_KEYS:-dev-key}
+      ANALYTICS_IP_HASH_SECRET: ${ANALYTICS_IP_HASH_SECRET:-local-development-only}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  tests:
+    image: maven:3.9.12-eclipse-temurin-21
+    profiles: ["test"]
+    working_dir: /workspace
+    command: ["./mvnw", "verify"]
+    volumes:
+      - .:/workspace
+      - maven-cache:/root/.m2
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  postgres-data:
+  maven-cache:

@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: url-shortener
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/shortener}
+    username: ${DATABASE_USERNAME:shortener}
+    password: ${DATABASE_PASSWORD:shortener}
+    hikari:
+      connection-timeout: 2000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 1s
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  structured:
+    format:
+      console: logstash
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  links:
+    default-ttl: ${LINK_DEFAULT_TTL:P365D}
+  cache:
+    default-ttl: ${CACHE_DEFAULT_TTL:PT24H}
+    negative-ttl: ${CACHE_NEGATIVE_TTL:PT30S}
+  analytics:
+    queue-capacity: ${ANALYTICS_QUEUE_CAPACITY:10000}
+    ip-hash-secret: ${ANALYTICS_IP_HASH_SECRET:local-development-only}
+  rate-limit:
+    creates-per-minute: ${CREATE_RATE_LIMIT:60}
+  security:
+    api-keys: ${APP_API_KEYS:dev-key}

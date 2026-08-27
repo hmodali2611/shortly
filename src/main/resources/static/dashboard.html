@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Short Link Analytics</title>
+  <style>
+    :root { --ink:#19221d; --paper:#f4f2ea; --accent:#d64b32; --green:#1f6b4f; --line:#c8c4b8; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:repeating-linear-gradient(90deg,var(--paper) 0,var(--paper) 39px,#ebe8de 40px); font-family:Georgia,"Times New Roman",serif; }
+    header { padding:28px clamp(20px,6vw,80px) 20px; border-bottom:2px solid var(--ink); background:#f8f6ef; display:flex; align-items:end; justify-content:space-between; gap:24px; }
+    h1 { margin:0; font-size:clamp(30px,5vw,56px); font-weight:500; letter-spacing:0; }
+    .status { font:700 12px ui-monospace,monospace; color:var(--green); text-transform:uppercase; }
+    main { width:min(1180px,calc(100% - 40px)); margin:32px auto 60px; }
+    .controls { display:grid; grid-template-columns:1fr 1fr auto; gap:10px; margin-bottom:28px; }
+    input,button { min-height:44px; border:1px solid var(--ink); border-radius:2px; padding:10px 12px; background:#fff; color:var(--ink); font:15px ui-monospace,monospace; }
+    button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; font-weight:700; }
+    .metrics { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--ink); background:#fff; }
+    .metric { padding:22px; border-right:1px solid var(--line); min-width:0; }
+    .metric:last-child { border-right:0; }
+    .metric span { display:block; font:12px ui-monospace,monospace; text-transform:uppercase; }
+    .metric strong { display:block; margin-top:8px; font-size:clamp(24px,4vw,42px); font-weight:500; overflow-wrap:anywhere; }
+    .panels { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:24px; }
+    section { padding:22px; border-top:4px solid var(--green); background:#fff; }
+    h2 { margin:0 0 16px; font-size:22px; font-weight:500; }
+    table { width:100%; border-collapse:collapse; font:14px ui-monospace,monospace; }
+    td { padding:10px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+    td:last-child { text-align:right; font-weight:700; }
+    .empty { color:#6c716d; font-style:italic; }
+    @media (max-width:760px) { header{align-items:start;flex-direction:column}.controls{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}.metric:nth-child(2){border-right:0}.metric{border-bottom:1px solid var(--line)}.panels{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <header><h1>Short Link Analytics</h1><div class="status" id="status">Awaiting link</div></header>
+  <main>
+    <form class="controls" id="form">
+      <input id="code" required maxlength="32" placeholder="Short code" aria-label="Short code">
+      <input id="key" required type="password" placeholder="API key" aria-label="API key">
+      <button type="submit">Load analytics</button>
+    </form>
+    <div class="metrics">
+      <div class="metric"><span>Total clicks</span><strong id="total">-</strong></div>
+      <div class="metric"><span>Unique visitors</span><strong id="unique">-</strong></div>
+      <div class="metric"><span>Last 24 hours</span><strong id="recent">-</strong></div>
+      <div class="metric"><span>Last click</span><strong id="last">-</strong></div>
+    </div>
+    <div class="panels">
+      <section><h2>Top referrers</h2><table id="referrers"><tr><td class="empty">No data loaded</td></tr></table></section>
+      <section><h2>User agents</h2><table id="devices"><tr><td class="empty">No data loaded</td></tr></table></section>
+    </div>
+  </main>
+  <script>
+    const text = (id, value) => document.getElementById(id).textContent = value ?? "-";
+    const fill = (id, rows) => {
+      const table = document.getElementById(id);
+      table.replaceChildren(...(rows.length ? rows : [{ value: "No events", count: "" }]).map(row => {
+        const tr = document.createElement("tr");
+        const label = document.createElement("td");
+        const count = document.createElement("td");
+        label.textContent = row.value;
+        count.textContent = row.count;
+        tr.append(label, count);
+        return tr;
+      }));
+    };
+    document.getElementById("form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const status = document.getElementById("status");
+      status.textContent = "Loading";
+      try {
+        const code = encodeURIComponent(document.getElementById("code").value.trim());
+        const key = document.getElementById("key").value;
+        const response = await fetch(`/api/v1/links/${code}/stats`, { headers: { Authorization: `Bearer ${key}` } });
+        if (!response.ok) throw new Error((await response.json()).detail || `Request failed: ${response.status}`);
+        const data = await response.json();
+        text("total", data.totalClicks.toLocaleString());
+        text("unique", data.uniqueVisitors.toLocaleString());
+        text("recent", data.clicksLast24h.toLocaleString());
+        text("last", data.lastClickAt ? new Date(data.lastClickAt).toLocaleString() : "None");
+        fill("referrers", data.topReferrers);
+        fill("devices", data.devices);
+        status.textContent = `As of ${new Date(data.asOf).toLocaleTimeString()}`;
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>
