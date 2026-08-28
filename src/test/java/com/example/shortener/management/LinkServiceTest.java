@@ -24,6 +24,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -132,6 +134,23 @@ class LinkServiceTest {
 		when(repository.findById("private")).thenReturn(Optional.of(link));
 
 		assertThat(service.metadata("private").shortCode()).isEqualTo("private");
+	}
+
+	@Test
+	void metadataMapsDatabaseOutageToServiceUnavailable() {
+		when(repository.findById("campaign")).thenThrow(new QueryTimeoutException("db down"));
+
+		assertThatThrownBy(() -> service.metadata("campaign")).isInstanceOf(ApiException.class)
+				.extracting(exception -> ((ApiException) exception).getStatus().value()).isEqualTo(503);
+	}
+
+	@Test
+	void deleteMapsTransactionFailureToServiceUnavailable() {
+		when(repository.findById("campaign")).thenThrow(new CannotCreateTransactionException("db down"));
+
+		assertThatThrownBy(() -> service.delete("campaign")).isInstanceOf(ApiException.class)
+				.extracting(exception -> ((ApiException) exception).getStatus().value()).isEqualTo(503);
+		verifyNoInteractions(cache);
 	}
 
 	@Test

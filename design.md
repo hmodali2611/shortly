@@ -470,11 +470,13 @@ The cache circuit opens after three consecutive Redis failures and bypasses Redi
 |---|---|
 | Redirect, cache hit | Served normally. Postgres is not on the hot path when warm. |
 | Redirect, cache miss | `503`. There is nowhere else to resolve the code from. |
-| Create / delete | `503`. Never queue writes in memory — a client that received `201` must be able to trust it. |
+| Create / delete / metadata | `503`. Never queue writes in memory — a client that received `201` must be able to trust it. |
 | Analytics flush | Buffer retains up to the queue bound, then drops. No redirect impact. |
 | `/actuator/health` | `DOWN`, so an orchestrator stops routing rather than a node absorbing traffic it cannot serve. |
 
 Database failure is bounded by HikariCP's 2-second `connection-timeout` and PostgreSQL's 5-second JDBC `socketTimeout`; cache hits avoid that path entirely. Cache misses return `503` when Postgres is unavailable instead of changing redirect semantics or acknowledging a result that cannot be resolved. Tested by T-13.
+
+`LinkService.metadata()` and `delete()` (and therefore `StatsService`, which calls `metadata()` first) now map the same failure the same way the redirect path already did: `requireLink()` wraps its repository call in the same `DataAccessException`/`CannotCreateTransactionException` → `503` pattern `LinkResolver` uses. This closed a real gap found in post-build review — those two methods previously let the raw exception escape, which `GlobalExceptionHandler` had no fallback for either, so a Postgres outage on a metadata or delete call produced Spring Boot's default (non-RFC-7807) error body instead of the documented `503` (EXECUTION-LOG.md #18). `GlobalExceptionHandler` now also carries a catch-all handler for any other unmapped exception, logged server-side and never echoing exception detail to the client.
 
 **Cost:** cache and DB can diverge on delete. Mitigated by after-commit eviction plus bounded TTL.
 
@@ -496,7 +498,9 @@ This is the strongest differentiator in the build, and most reference designs sk
 
 **Scheme allowlist — `http` and `https` only.** Rejecting `javascript:`, `data:`, `file:` is not optional. A shortener that redirects to `javascript:` is a stored-XSS delivery service.
 
-**SSRF blocking.** Resolve the target host and reject loopback (`127.0.0.0/8`, `::1`), private ranges (`10/8`, `172.16/12`, `192.168/16`), link-local (`169.254.0.0/16`, notably the `169.254.169.254` cloud metadata endpoint), and `.internal` / `.local` / unqualified hostnames. Without this the service is a willing proxy for probing internal infrastructure from outside the perimeter.
+**SSRF blocking.** Resolve the target host and reject loopback (`127.0.0.0/8`, `::1`), private ranges (`10/8`, `172.16/12`, `192.168/16`, and IPv6 Unique Local Addresses `fc00::/7`), link-local (`169.254.0.0/16`, notably the `169.254.169.254` cloud metadata endpoint), and `.internal` / `.local` / unqualified hostnames. Without this the service is a willing proxy for probing internal infrastructure from outside the perimeter.
+
+The `fc00::/7` check was added in post-build review: `InetAddress.isSiteLocalAddress()` only recognizes the deprecated IPv6 site-local range (`fec0::/10`), not the modern Unique Local Address range that RFC 4193 replaced it with, so a target resolving to `fd00::/8` passed every existing check undetected. The original adversarial-review pass (ledger #4) surfaced IPv4-mapped bypass and the cloud metadata endpoint but not this range — a reminder that "list every bypass you can think of" only surfaces what the reviewer, human or AI, thinks to ask about (EXECUTION-LOG.md #19).
 
 **Rate limiting.** Redis-backed fixed window per hashed client IP on creation; requests over the limit return `429`. Hashing avoids placing raw addresses in Redis keys. Clients behind one NAT share a quota, and proxy deployments must supply a trusted client-address strategy rather than accepting spoofable forwarding headers. This is Redis's second job — one dependency serving two requirements, which is part of why it earns its place. The prototype does not emit `Retry-After`; adding it is a client-usability improvement.
 

@@ -44,13 +44,25 @@ public class UrlSafetyValidator {
 		try {
 			for (InetAddress address : hostResolver.resolve(host)) {
 				if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
-						|| address.isSiteLocalAddress() || address.isMulticastAddress()) {
+						|| address.isSiteLocalAddress() || address.isMulticastAddress()
+						|| isUniqueLocalAddress(address)) {
 					throw rejected("Target resolves to a non-public address");
 				}
 			}
 		} catch (UnknownHostException exception) {
 			throw rejected("Target host cannot be resolved");
 		}
+	}
+
+	/**
+	 * IPv6 Unique Local Addresses (RFC 4193, {@code fc00::/7}) are the modern
+	 * replacement for the deprecated site-local range and are not recognized by
+	 * {@link InetAddress#isSiteLocalAddress()}, which only covers
+	 * {@code fec0::/10}.
+	 */
+	private static boolean isUniqueLocalAddress(InetAddress address) {
+		byte[] bytes = address.getAddress();
+		return bytes.length == 16 && (bytes[0] & 0xFE) == 0xFC;
 	}
 
 	private ApiException rejected(String message) {

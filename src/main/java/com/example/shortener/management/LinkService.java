@@ -9,9 +9,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -105,7 +107,14 @@ public class LinkService {
 	}
 
 	private LinkEntity requireLink(String shortCode) {
-		return repository.findById(shortCode)
-				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "link-not-found", "Link was not found"));
+		try {
+			return repository.findById(shortCode)
+					.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "link-not-found", "Link was not found"));
+		} catch (ApiException exception) {
+			throw exception;
+		} catch (DataAccessException | CannotCreateTransactionException exception) {
+			throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "link-store-unavailable",
+					"Link lookup is temporarily unavailable");
+		}
 	}
 }

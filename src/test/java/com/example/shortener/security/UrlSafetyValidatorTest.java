@@ -18,7 +18,8 @@ class UrlSafetyValidatorTest {
 	@ParameterizedTest
 	@ValueSource(strings = {"javascript:alert(1)", "data:text/plain,hello", "file:///etc/passwd",
 			"http://localhost/test", "http://127.0.0.1/test", "http://169.254.169.254/latest/meta-data",
-			"http://service.internal/path", "https://user:password@example.com"})
+			"http://service.internal/path", "https://user:password@example.com", "http://[fd00::1]/test",
+			"http://[fc00::1]/test"})
 	void rejectsUnsafeTargets(String target) {
 		assertThatThrownBy(() -> validator.validate(target)).isInstanceOf(ApiException.class)
 				.extracting(exception -> ((ApiException) exception).getStatus())
@@ -41,6 +42,26 @@ class UrlSafetyValidatorTest {
 		assertThatThrownBy(() -> mixedValidator.validate("https://example.com")).isInstanceOf(ApiException.class)
 				.extracting(exception -> ((ApiException) exception).getStatus())
 				.isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+	}
+
+	@Test
+	void rejectsIpv6UniqueLocalRangeBoundary() throws Exception {
+		UrlSafetyValidator lowBoundary = validatorResolvingTo("fc00::1");
+		UrlSafetyValidator highBoundary = validatorResolvingTo("fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+
+		assertThatThrownBy(() -> lowBoundary.validate("https://internal.example")).isInstanceOf(ApiException.class)
+				.extracting(exception -> ((ApiException) exception).getStatus())
+				.isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+		assertThatThrownBy(() -> highBoundary.validate("https://internal.example")).isInstanceOf(ApiException.class)
+				.extracting(exception -> ((ApiException) exception).getStatus())
+				.isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+	}
+
+	@Test
+	void acceptsIpv6JustOutsideUniqueLocalRange() throws Exception {
+		UrlSafetyValidator justAbove = validatorResolvingTo("fe00::1");
+
+		assertThatCode(() -> justAbove.validate("https://example.com")).doesNotThrowAnyException();
 	}
 
 	@Test

@@ -39,7 +39,7 @@ docker compose --profile test run --rm tests
 docker compose --profile test run --rm security
 ```
 
-The test command runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. It provides Docker to Testcontainers and currently completes 49 tests with zero skips. The security command runs OWASP Dependency-Check and requires internet access to update vulnerability data; an NVD API key is recommended for faster cold updates.
+The test command runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. It provides Docker to Testcontainers and currently completes 58 tests with zero skips. The security command runs OWASP Dependency-Check and requires internet access to update vulnerability data; an NVD API key is recommended for faster cold updates.
 
 To run the same commands directly on the host, install Java 25 and ensure Testcontainers can access the active Docker socket:
 

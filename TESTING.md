@@ -7,10 +7,10 @@
 Latest local run:
 
 - Build: passed
-- Tests: 49 run, 0 failures, 0 errors, 0 skipped in the Docker-backed run
+- Tests: 58 run, 0 failures, 0 errors, 0 skipped in the Docker-backed run
 - Static analysis: 0 SpotBugs warnings/errors
 - Formatting: 46 Java files clean
-- Critical-service line coverage: 95.8% (160/167), independently measured from the JaCoCo report
+- Critical-service line coverage: 96.0% (167/174), independently measured from the JaCoCo report
 
 The tests cover URL safety, anonymous metadata access, aliases, generated-code collision retry, create/metadata/delete behavior, cache failure fallback, database-backed expiry, expiry-bounded cache TTL, queue saturation, and stats aggregation. The Testcontainers integration test exercises create, redirect, metadata, deletion, and an expired PostgreSQL row returning `410` on a cache miss; stats and dependency health were exercised separately during the documented runtime smoke checks.
 
@@ -19,6 +19,8 @@ The tests cover URL safety, anonymous metadata access, aliases, generated-code c
 Three more previously "planned" acceptance criteria are now automated. `RateLimiterTest` (T-9, NFR-2) mocks the Redis counter to assert `429` over the configured limit and `503` when Redis itself fails. `AliasValidatorTest` (T-14) asserts a 32-character alias round-trips through the validator and a 33-character one is rejected — the boundary the schema's `VARCHAR(32)` column depends on, and the same boundary a past AI-generated migration got wrong (`EXECUTION-LOG.md` ledger #3). This closes the validator half of T-14 only; a database-level round-trip proving the schema column itself holds 32 characters remains unautomated. `GlobalExceptionHandlerTest` (T-23) asserts the RFC 7807 envelope shape — `status`, `title`, `detail`, `type`, `instance` — for a representative `404` and `503`.
 
 The Flyway migration test applies V1 and V2, inserts representative link and click data, then applies V3 and verifies that both records survive while the obsolete ownership column and index are removed.
+
+Nine tests were added in post-build review (`EXECUTION-LOG.md` ledger #18–19), closing two gaps between documented and actual behavior: `LinkServiceTest` and `GlobalExceptionHandlerTest` now prove a Postgres outage during `metadata()`/`delete()` returns `503` in the RFC 7807 shape rather than an unmapped exception, and `UrlSafetyValidatorTest` proves IPv6 Unique Local Addresses (`fc00::/7`) are rejected, with explicit boundary cases at `fc00::1`, `fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`, and `fe00::1`.
 
 ## Runtime and Security Evidence
 
