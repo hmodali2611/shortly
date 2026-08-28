@@ -53,6 +53,15 @@ services:
       - maven-cache:/root/.m2
       - /var/run/docker.sock:/var/run/docker.sock
 
+  security:
+    image: maven:3.9.12-eclipse-temurin-25
+    profiles: ["test"]
+    working_dir: /workspace
+    command: ["./mvnw", "-Psecurity", "dependency-check:check"]
+    volumes:
+      - .:/workspace
+      - maven-cache:/root/.m2
+
 volumes:
   postgres-data:
   maven-cache:

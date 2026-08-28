@@ -2,7 +2,7 @@
 
 ## Automated Gates
 
-`./mvnw verify` runs JUnit 5 unit tests, the Docker-aware Testcontainers integration test, Spotless, SpotBugs, and JaCoCo. JaCoCo enforces at least 80% aggregate line coverage over the critical management, security, redirect, and analytics services.
+`docker compose --profile test run --rm tests` is the reproducible Docker-only gate. It runs JUnit 5 unit tests, the Testcontainers integration tests, Spotless, SpotBugs, and JaCoCo. JaCoCo enforces at least 80% aggregate line coverage over the critical management, security, redirect, and analytics services. A host-side `./mvnw verify` requires Java 25 and a Testcontainers-compatible Docker socket; Docker-backed tests fail rather than silently skip when that socket is unavailable.
 
 Latest local run:
 

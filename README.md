@@ -6,7 +6,7 @@ A Java 25/Spring Boot 3.5 URL shortener with PostgreSQL persistence, Redis cache
 
 ## Quick Start
 
-Prerequisite: Docker with Compose.
+Prerequisite: Docker Engine with Compose. Docker Buildx is recommended; Compose can fall back to the classic builder when it is unavailable.
 
 ```bash
 docker compose up --build
@@ -32,13 +32,23 @@ curl -i -X DELETE http://localhost:8080/api/v1/links/example-link
 
 ## Verification
 
+The reproducible, Docker-only verification path is:
+
+```bash
+docker compose --profile test run --rm tests
+docker compose --profile test run --rm security
+```
+
+The test command runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. It provides Docker to Testcontainers and currently completes 49 tests with zero skips. The security command runs OWASP Dependency-Check and requires internet access to update vulnerability data; an NVD API key is recommended for faster cold updates.
+
+To run the same commands directly on the host, install Java 25 and ensure Testcontainers can access the active Docker socket:
+
 ```bash
 ./mvnw verify
-docker compose --profile test run --rm tests
 ./mvnw -Psecurity dependency-check:check
 ```
 
-`verify` runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. The Compose test command provides Docker to Testcontainers and currently completes 49 tests with zero skips. CI runs `verify` on Java 25.
+The Docker-backed suites fail rather than silently skip when Testcontainers cannot reach Docker. This commonly affects host-side runs with non-default runtimes such as Colima; use the Docker-only command above or configure Testcontainers for that runtime. CI runs `verify` on Java 25.
 
 Optional load smoke test (requires k6 and a running service):
 
@@ -57,10 +67,10 @@ Recommended reviewer path; each artifact owns one concern:
 
 1. [ARCHITECTURE.md](ARCHITECTURE.md): concise implementation orientation
 2. [design.md](design.md): authoritative requirements, decisions, trade-offs, and scale path
-3. [SCENARIOS.md](SCENARIOS.md): greenfield, brownfield, and ambiguous-requirement execution
-4. [EXECUTION-LOG.md](EXECUTION-LOG.md): AI prompts, dispositions, provenance, and human sign-off
+3. [SCENARIOS.md](docs/SCENARIOS.md): greenfield, brownfield, and ambiguous-requirement execution
+4. [EXECUTION-LOG.md](docs/EXECUTION-LOG.md): AI prompts, dispositions, provenance, and human sign-off
 5. [TESTING.md](TESTING.md): authoritative measured test, coverage, security, and performance evidence
-6. [RISKS-AND-VALIDATION.md](RISKS-AND-VALIDATION.md): authoritative residual-risk register
+6. [RISKS-AND-VALIDATION.md](docs/RISKS-AND-VALIDATION.md): authoritative residual-risk register
 7. [openapi.yaml](openapi.yaml): checked-in API contract
 
 ## Current Limitations
