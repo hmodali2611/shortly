@@ -67,7 +67,7 @@ The generalisable lesson, applied to every later prompt: **AI is reliable on str
 
 - Unit tests verify forced collision retry and retry exhaustion behavior.
 - The Testcontainers integration test covers create, redirect, metadata, stats, delete, and health when Docker is available.
-- Latest local result: unit gates pass; the integration test skipped because Docker was unavailable.
+- Latest local result: all 41 tests pass with zero skips in Docker-backed verification.
 - A unique-constraint mutation check remains a proposed strengthening exercise; it is not claimed as executed.
 
 ## 1.5 Risks and sign-off
@@ -75,10 +75,10 @@ The generalisable lesson, applied to every later prompt: **AI is reliable on str
 | Risk | Control |
 |---|---|
 | Weak randomness → enumerable codes | `SecureRandom` asserted; `security/` changes require sign-off |
-| Retry exhaustion undefined | `503` + `Retry-After`, T-15, ERROR log with counter |
+| Retry exhaustion undefined | `503` after exactly five attempts, verified by T-15 |
 | `301` chosen by habit | Decision documented with its cost in `design.md` §7 |
 
-**Signed off:** ⬜ — schema (G-01) and generator (G-03) are on the high-impact list in `EXECUTION-LOG.md` §6.
+**Signed off:** Harika Modali, 2026-08-27 — schema migration and secure code generation reviewed against focused tests and the 34-test Docker-backed gate.
 
 ---
 
@@ -92,13 +92,13 @@ Stated requirement: *"Redirects are too slow under load. Add caching."*
 
 Reframed before touching code: **the requirement is a latency target, not a cache.** "Add caching" is a proposed solution presented as a requirement. Accepting it verbatim skips the question of whether the database is actually the bottleneck.
 
-The design calls for a baseline measurement before optimization. The supplied k6 smoke harness makes the latency threshold executable, but it has not been run on the authoring host. A production decision would require before/after evidence showing that the database round-trip, rather than connection-pool contention or serialization, dominates p95.
+The read-only k6 harness measured 4.88 ms warm-cache p95 with 0% failures. A Redis-unavailable run initially measured 2.02 seconds p95 because cache failure detection dominated the database fallback; reducing configurable Redis command/connect timeouts to 200 ms lowered fallback p95 to 416.99 ms. A later cache-miss benchmark measured the PostgreSQL path at 7.91 ms p95, confirming that failure detection rather than the database dominated the degraded result. A three-failure, five-second Redis circuit breaker then reduced sustained Redis-outage p95 to 8.74 ms; after Redis recovery, a half-open probe restored caching and the same workload measured 6.85 ms p95.
 
 **Normalized:** *Reduce redirect p95 below 50 ms server-side at 350 rps, without introducing a dependency whose failure can fail a redirect, and without altering any currently-passing behavior.*
 
 ## 2.2 Codebase reasoning — impact analysis
 
-This is the stage the assignment names explicitly, and the stage AI genuinely accelerates: given the tree and the design doc, it produced a first-pass impact map in one prompt that would have taken an hour by hand. It was then checked by hand, and the check found something.
+This is the stage the assignment names explicitly, and the stage AI genuinely accelerates: given the tree and the design doc, it produced a first-pass impact map in one prompt that would have taken an hour by hand. It was then checked by hand, and the check found something. The sanitized reconstructed task prompt and its provenance are recorded in `EXECUTION-LOG.md` §4.2.
 
 | Component | Impact | Note |
 |---|---|---|
@@ -125,7 +125,8 @@ B-01 Redis via Compose + config, no code path        (infrastructure only)
             └─ B-04 Cache-aside in LinkResolver      (T-5 goes green)
                  ├─ B-05 Eviction on delete          (finding (a))
                  ├─ B-06 Degradation path + T-6      (finding (b), fail-open)
-                 └─ B-07 Negative caching, 30s
+                 ├─ B-07 Negative caching, 30s
+                 └─ B-08 Circuit breaker              (3 failures, 5s, one probe)
 ```
 
 **B-03 before B-04 is the deliberate ordering.** The failing test is written before the implementation that would satisfy it, because the TTL rule is the one thing a working cache can silently get wrong.
@@ -151,19 +152,19 @@ cacheTtl = min(defaultTtl, link.remainingLifetime)
 ## 2.5 Validation
 
 - Unit tests cover warm-cache resolution, expiry-bounded TTL, Redis failure fallback, and database failure mapping.
-- Docker fault injection for Redis/PostgreSQL and before/after p95 measurements remain pending.
-- The k6 harness enforces p95 below 100 ms as a prototype smoke threshold; the stricter 50 ms design target requires a controlled benchmark environment.
+- Docker fault injection verified Redis-down fallback to PostgreSQL, PostgreSQL-down warm-cache redirects, and `503` for uncached redirects. It also exposed and led to a fix for transaction-acquisition failures that previously returned `500`.
+- The k6 harness measured 4.88 ms warm-cache p95, 7.91 ms cache-miss/PostgreSQL-path p95, 8.74 ms sustained Redis-outage p95 with the circuit breaker, and 6.85 ms after Redis recovery, all with 0% failures. The results pass the 50 ms design target; production claims still require a controlled benchmark environment.
 
 ## 2.6 Risks and sign-off
 
 | Risk | Control |
 |---|---|
-| Cache/DB divergence on delete | Explicit eviction (B-05) + bounded TTL |
-| Redis failure cascades to redirects | Fail-open, T-6 |
+| Cache/DB divergence on delete | After-commit eviction (B-05) + bounded TTL; ordering regression test |
+| Redis failure cascades to redirects | Fail-open, T-6; circuit opens after three failures and permits one recovery probe after five seconds |
 | Rate limiter degraded by shared Redis | Deliberate fail-closed asymmetry, documented in `design.md` §9 |
 | Negative-cache shadowing a new link | TTL kept to 30 s |
 
-**Signed off:** ⬜ — redirect-path failure handling is on the high-impact list.
+**Signed off:** Harika Modali, 2026-08-27 — redirect status/failure handling, after-commit deletion eviction, and cache circuit-breaker recovery reviewed against the 38-test Docker-backed gate and recorded fault injection.
 
 ---
 
@@ -185,7 +186,7 @@ The failure mode here is not building it wrong. It is **building something plaus
 | 4 | "Unique" visitors — by what? | Raw IP | Creates a PII obligation the feature does not need |
 | 5 | Durability of a click | Assumed guaranteed | Determines whether Kafka is required on day one |
 
-**AI was useful for enumeration and useless for recognition.** Asked to design analytics, it produced a competent counter-column implementation with no indication that a question had been decided. Asked *"what is ambiguous in this requirement?"*, it surfaced four of the five. The difference is entirely in the prompt, and knowing to ask the second question is the human contribution.
+**AI was useful for enumeration and useless for recognition.** Asked to design analytics, it produced a competent counter-column implementation with no indication that a question had been decided. Asked *"what is ambiguous in this requirement?"*, it surfaced four of the five. The difference is entirely in the prompt, and knowing to ask the second question is the human contribution. The sanitized reconstructed clarification and implementation prompts are recorded in `EXECUTION-LOG.md` §4.3.
 
 ## 3.2 Normalization — decisions with owners
 
@@ -213,16 +214,17 @@ A-01 click_events schema + Flyway                 (decision 3 embodied)
 
 ## 3.4 AI-assisted execution and one rejection
 
-`ClickRecorder` was **rejected outright rather than edited.** The generated implementation used an unbounded `LinkedBlockingQueue` — under sustained load with a stalled flusher, the queue grows until the JVM dies, taking every redirect with it. The design decision was explicit (`design.md` §10: drop under load rather than OOM) and the generated code inverted it. Rewritten by hand: bounded queue, `offer()` returning false, drop counter, metric.
+`ClickRecorder` was **rejected outright rather than edited.** The generated implementation used an unbounded `LinkedBlockingQueue` — under sustained load with a stalled flusher, the queue grows until the JVM dies, taking every redirect with it. The design decision was explicit (`design.md` §10: drop under load rather than OOM) and the generated code inverted it. Rewritten by hand: bounded queue, `offer()` returning false, and an internal drop counter.
 
 **Rejected rather than edited**, because the fix would have been the entire decision. The distinction is recorded in `EXECUTION-LOG.md` §3 for exactly this reason.
 
 ## 3.5 Validation
 
-- **T-11** analytics sink stalled → redirect latency flat. Proves decision 2 held at the code level, not just in prose.
-- **Queue-saturation test** — flusher blocked, load applied, asserts events dropped, drop counter incremented, and **no redirect fails**. This tests the accepted cost, not the happy path.
-- **`asOf` asserted present** in every stats response, so eventual consistency is visible to callers rather than implied away.
-- **Log assertion (NFR-6)** — no raw IPs anywhere in output.
+- **T-11 is now executed.** `RedirectControllerHotPathTest#redirectStaysFastWhileClickFlushIsStalledOnTheDatabase` blocks a mocked batch write mid-flush and asserts 50 concurrent redirects still return, and a full queue drops rather than blocks the caller. Written after the fact — this was a documented gap the assignment asked to be closed, not part of the original scenario build — and it directly exercises `RedirectController` and `ClickRecorder`, not just the isolated queue. The first version of this test stubbed `JdbcTemplate.batchUpdate` to return a value typed `int[]`; the real overload returns `int[][]`, so the stub's `ClassCastException` was silently caught by `ClickFlusher`'s own failure-handling path, producing a test that passed for the wrong reason — it measured recovery-after-failure, not a genuinely stalled sink. Caught only by tracing the drop count by hand against the expected queue-capacity arithmetic, not by the assertion itself passing or failing. A small, concrete instance of this document's recurring point: generated test code needs the same scrutiny as generated production code.
+- **Queue-saturation unit test** — fills the bounded recorder, then asserts excess events are dropped and the drop counter increments. It verifies the backpressure policy, but does not measure redirect latency.
+- **Multi-batch flush tests** — one scheduled invocation drains multiple 500-event batches, up to the default 10,000-event queue bound, while failed database writes restore drained events.
+- **`asOf` is asserted** in the stats-service unit test, so eventual consistency is explicit in that response contract.
+- **NFR-6 log-redaction assertion is now executed on the redirect path.** `RedirectControllerHotPathTest#neverLogsRawClientAddressOrTargetUrl` attaches a Logback appender around a redirect carrying a marked target URL and synthetic client address, and asserts neither value appears in captured log output or MDC context. Coverage beyond this one call site remains manual observation, not automated — the app has no other call sites that log request data today, so this is a regression guard against one being added carelessly, not proof across the whole codebase.
 
 ## 3.6 Known limitations, stated rather than smoothed over
 
@@ -230,4 +232,4 @@ A-01 click_events schema + Flyway                 (decision 3 embodied)
 - **Bot flagging is user-agent heuristics.** It will miss anything that wants to be missed.
 - **Multi-day unique counts over-count** returning visitors — the deliberate cost of daily salt rotation.
 
-**Signed off:** ⬜ — schema (A-01) is on the high-impact list; the async path is not, but the queue-bound behavior is reviewed by hand because a green test suite is weak evidence for it.
+**Signed off:** Harika Modali, 2026-08-27 — analytics schema migration and bounded best-effort queue behavior reviewed, including the accepted event-loss limitations.

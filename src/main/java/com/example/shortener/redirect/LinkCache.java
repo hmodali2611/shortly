@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@SuppressWarnings("null")
 public class LinkCache {
 
 	private static final String NEGATIVE = "__missing__";
@@ -16,19 +17,25 @@ public class LinkCache {
 	private final ObjectMapper objectMapper;
 	private final Duration defaultTtl;
 	private final Duration negativeTtl;
+	private final RedisCircuitBreaker circuitBreaker;
 
 	public LinkCache(StringRedisTemplate redis, ObjectMapper objectMapper,
 			@Value("${app.cache.default-ttl}") Duration defaultTtl,
-			@Value("${app.cache.negative-ttl}") Duration negativeTtl) {
+			@Value("${app.cache.negative-ttl}") Duration negativeTtl, RedisCircuitBreaker circuitBreaker) {
 		this.redis = redis;
 		this.objectMapper = objectMapper;
 		this.defaultTtl = defaultTtl;
 		this.negativeTtl = negativeTtl;
+		this.circuitBreaker = circuitBreaker;
 	}
 
 	public CacheLookup get(String shortCode) {
+		if (!circuitBreaker.tryAcquire()) {
+			return CacheLookup.status(CacheLookup.Status.UNAVAILABLE);
+		}
 		try {
 			String value = redis.opsForValue().get(key(shortCode));
+			circuitBreaker.recordSuccess();
 			if (value == null) {
 				return CacheLookup.status(CacheLookup.Status.MISS);
 			}
@@ -36,7 +43,10 @@ public class LinkCache {
 				return CacheLookup.status(CacheLookup.Status.NEGATIVE);
 			}
 			return CacheLookup.hit(objectMapper.readValue(value, CachedLink.class));
-		} catch (RuntimeException | JsonProcessingException exception) {
+		} catch (RuntimeException exception) {
+			circuitBreaker.recordFailure();
+			return CacheLookup.status(CacheLookup.Status.UNAVAILABLE);
+		} catch (JsonProcessingException exception) {
 			return CacheLookup.status(CacheLookup.Status.UNAVAILABLE);
 		}
 	}
@@ -51,25 +61,46 @@ public class LinkCache {
 		if (ttl.isNegative() || ttl.isZero()) {
 			return;
 		}
+		String value;
 		try {
-			redis.opsForValue().set(key(shortCode), objectMapper.writeValueAsString(link), ttl);
-		} catch (RuntimeException | JsonProcessingException ignored) {
+			value = objectMapper.writeValueAsString(link);
+		} catch (JsonProcessingException ignored) {
+			return;
+		}
+		if (!circuitBreaker.tryAcquire()) {
+			return;
+		}
+		try {
+			redis.opsForValue().set(key(shortCode), value, ttl);
+			circuitBreaker.recordSuccess();
+		} catch (RuntimeException ignored) {
+			circuitBreaker.recordFailure();
 			// Redis is an optimization; database resolution remains authoritative.
 		}
 	}
 
 	public void putMissing(String shortCode) {
+		if (!circuitBreaker.tryAcquire()) {
+			return;
+		}
 		try {
 			redis.opsForValue().set(key(shortCode), NEGATIVE, negativeTtl);
+			circuitBreaker.recordSuccess();
 		} catch (RuntimeException ignored) {
+			circuitBreaker.recordFailure();
 			// A failed negative-cache write must not alter lookup semantics.
 		}
 	}
 
 	public void evict(String shortCode) {
+		if (!circuitBreaker.tryAcquire()) {
+			return;
+		}
 		try {
 			redis.delete(key(shortCode));
+			circuitBreaker.recordSuccess();
 		} catch (RuntimeException ignored) {
+			circuitBreaker.recordFailure();
 			// Expiry and database lifecycle checks bound stale cache behavior.
 		}
 	}

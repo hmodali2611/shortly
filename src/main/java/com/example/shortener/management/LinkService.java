@@ -3,16 +3,18 @@ package com.example.shortener.management;
 import com.example.shortener.common.ApiException;
 import com.example.shortener.common.LinkEntity;
 import com.example.shortener.common.LinkRepository;
+import com.example.shortener.redirect.LinkCache;
+import com.example.shortener.security.UrlSafetyValidator;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import com.example.shortener.redirect.LinkCache;
-import com.example.shortener.security.UrlSafetyValidator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class LinkService {
@@ -40,7 +42,7 @@ public class LinkService {
 		this.baseUrl = baseUrl;
 	}
 
-	public LinkResponse create(CreateLinkRequest request, String ownerKeyId) {
+	public LinkResponse create(CreateLinkRequest request) {
 		urlSafetyValidator.validate(request.targetUrl());
 		Instant now = clock.instant();
 		Instant expiresAt = request.expiresAt() == null ? now.plus(defaultTtl) : request.expiresAt();
@@ -49,11 +51,10 @@ public class LinkService {
 		}
 		if (request.customAlias() != null && !request.customAlias().isBlank()) {
 			aliasValidator.validate(request.customAlias());
-			return insert(request.customAlias(), request.targetUrl(), now, expiresAt, ownerKeyId, true, false);
+			return insert(request.customAlias(), request.targetUrl(), now, expiresAt, true, false);
 		}
 		for (int attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
-			LinkResponse response = insert(generator.generate(), request.targetUrl(), now, expiresAt, ownerKeyId, false,
-					true);
+			LinkResponse response = insert(generator.generate(), request.targetUrl(), now, expiresAt, false, true);
 			if (response != null) {
 				return response;
 			}
@@ -63,24 +64,37 @@ public class LinkService {
 	}
 
 	@Transactional(readOnly = true)
-	public LinkResponse metadata(String shortCode, String ownerKeyId) {
-		return LinkResponse.from(requireOwned(shortCode, ownerKeyId), baseUrl);
+	public LinkResponse metadata(String shortCode) {
+		return LinkResponse.from(requireLink(shortCode), baseUrl);
 	}
 
 	@Transactional
-	public void delete(String shortCode, String ownerKeyId) {
-		LinkEntity link = requireOwned(shortCode, ownerKeyId);
+	public void delete(String shortCode) {
+		LinkEntity link = requireLink(shortCode);
 		if (link.getDeletedAt() == null) {
 			link.delete(clock.instant());
-			linkCache.evict(shortCode);
+			evictAfterCommit(shortCode);
 		}
 	}
 
+	private void evictAfterCommit(String shortCode) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			linkCache.evict(shortCode);
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				linkCache.evict(shortCode);
+			}
+		});
+	}
+
 	private LinkResponse insert(String shortCode, String targetUrl, Instant createdAt, Instant expiresAt,
-			String ownerKeyId, boolean customAlias, boolean retryCollision) {
+			boolean customAlias, boolean retryCollision) {
 		try {
 			LinkEntity link = repository
-					.saveAndFlush(new LinkEntity(shortCode, targetUrl, createdAt, expiresAt, ownerKeyId, customAlias));
+					.saveAndFlush(new LinkEntity(shortCode, targetUrl, createdAt, expiresAt, customAlias));
 			return LinkResponse.from(link, baseUrl);
 		} catch (DataIntegrityViolationException exception) {
 			if (retryCollision) {
@@ -90,12 +104,8 @@ public class LinkService {
 		}
 	}
 
-	private LinkEntity requireOwned(String shortCode, String ownerKeyId) {
-		LinkEntity link = repository.findById(shortCode)
+	private LinkEntity requireLink(String shortCode) {
+		return repository.findById(shortCode)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "link-not-found", "Link was not found"));
-		if (!link.getOwnerKeyId().equals(ownerKeyId)) {
-			throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "The API key does not own this link");
-		}
-		return link;
 	}
 }

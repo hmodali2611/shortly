@@ -8,6 +8,7 @@ import java.time.Instant;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 @Service
 public class LinkResolver {
@@ -41,7 +42,7 @@ public class LinkResolver {
 			return activeTarget(cached);
 		} catch (ApiException exception) {
 			throw exception;
-		} catch (DataAccessException exception) {
+		} catch (DataAccessException | CannotCreateTransactionException exception) {
 			throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "link-store-unavailable",
 					"Link resolution is temporarily unavailable");
 		}

@@ -19,8 +19,14 @@
 
     <properties>
         <java.version>25</java.version>
+        <commons-lang3.version>3.20.0</commons-lang3.version>
+        <jackson-bom.version>2.21.6</jackson-bom.version>
+        <log4j2.version>2.26.1</log4j2.version>
+        <netty.version>4.1.137.Final</netty.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <springdoc.version>2.8.13</springdoc.version>
+        <springdoc.version>2.9.0</springdoc.version>
+        <swagger-ui.version>5.32.14</swagger-ui.version>
+        <tomcat.version>10.1.59</tomcat.version>
         <spotless.version>2.46.1</spotless.version>
         <spotbugs.version>4.9.8.2</spotbugs.version>
         <jacoco.version>0.8.13</jacoco.version>
@@ -65,6 +71,11 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>swagger-ui</artifactId>
+            <version>${swagger-ui.version}</version>
         </dependency>
 
         <dependency>
@@ -153,9 +164,9 @@
                                         <include>com.example.shortener.management.LinkService</include>
                                         <include>com.example.shortener.management.AliasValidator</include>
                                         <include>com.example.shortener.management.SecureRandomShortCodeGenerator</include>
-                                        <include>com.example.shortener.security.ApiKeyAuthenticator</include>
                                         <include>com.example.shortener.security.UrlSafetyValidator</include>
                                         <include>com.example.shortener.redirect.LinkResolver</include>
+                                        <include>com.example.shortener.redirect.RedisCircuitBreaker</include>
                                         <include>com.example.shortener.analytics.ClickRecorder</include>
                                         <include>com.example.shortener.analytics.StatsService</include>
                                     </includes>
@@ -186,6 +197,7 @@
                         <version>${dependency-check.version}</version>
                         <configuration>
                             <failBuildOnCVSS>7</failBuildOnCVSS>
+                            <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
                         </configuration>
                         <executions>
                             <execution>

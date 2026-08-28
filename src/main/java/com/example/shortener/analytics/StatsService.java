@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,23 +23,17 @@ public class StatsService {
 		this.clock = clock;
 	}
 
-	public AnalyticsResponse get(String shortCode, String ownerKeyId) {
-		linkService.metadata(shortCode, ownerKeyId);
-		Long total = jdbcTemplate.queryForObject("SELECT count(*) FROM click_events WHERE short_code = ?", Long.class,
-				shortCode);
-		Long unique = jdbcTemplate.queryForObject(
-				"SELECT count(DISTINCT ip_hash) FROM click_events WHERE short_code = ?", Long.class, shortCode);
-		Long recent = jdbcTemplate.queryForObject(
-				"SELECT count(*) FROM click_events WHERE short_code = ? AND occurred_at >= ?", Long.class, shortCode,
-				Timestamp.from(clock.instant().minus(24, ChronoUnit.HOURS)));
-		ClickBounds bounds = jdbcTemplate.queryForObject(
-				"SELECT min(occurred_at), max(occurred_at) FROM click_events WHERE short_code = ?",
-				(resultSet, row) -> new ClickBounds(toInstant(resultSet.getTimestamp(1)),
-						toInstant(resultSet.getTimestamp(2))),
-				shortCode);
-		return new AnalyticsResponse(shortCode, value(total), value(unique), value(recent),
-				bounds == null ? null : bounds.first(), bounds == null ? null : bounds.last(),
-				breakdown(shortCode, "referrer"), breakdown(shortCode, "user_agent"), clock.instant());
+	public AnalyticsResponse get(String shortCode) {
+		linkService.metadata(shortCode);
+		AnalyticsSummary summary = Objects.requireNonNull(jdbcTemplate.queryForObject(
+				"SELECT count(*), count(DISTINCT ip_hash), count(*) FILTER (WHERE occurred_at >= ?), "
+						+ "min(occurred_at), max(occurred_at) FROM click_events WHERE short_code = ?",
+				(resultSet, row) -> new AnalyticsSummary(resultSet.getLong(1), resultSet.getLong(2),
+						resultSet.getLong(3), toInstant(resultSet.getTimestamp(4)),
+						toInstant(resultSet.getTimestamp(5))),
+				Timestamp.from(clock.instant().minus(24, ChronoUnit.HOURS)), shortCode));
+		return new AnalyticsResponse(shortCode, summary.total(), summary.unique(), summary.recent(), summary.first(),
+				summary.last(), breakdown(shortCode, "referrer"), breakdown(shortCode, "user_agent"), clock.instant());
 	}
 
 	private List<AnalyticsResponse.Breakdown> breakdown(String shortCode, String column) {
@@ -53,10 +48,6 @@ public class StatsService {
 		return value == null ? null : value.toInstant();
 	}
 
-	private long value(Long value) {
-		return value == null ? 0 : value;
-	}
-
-	private record ClickBounds(Instant first, Instant last) {
+	private record AnalyticsSummary(long total, long unique, long recent, Instant first, Instant last) {
 	}
 }

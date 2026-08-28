@@ -2,9 +2,7 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 
 const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
-const apiKey = __ENV.API_KEY || "dev-key";
 const headers = {
-  Authorization: `Bearer ${apiKey}`,
   "Content-Type": "application/json",
 };
 

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 @ExtendWith(MockitoExtension.class)
 class LinkResolverTest {
@@ -39,7 +40,7 @@ class LinkResolverTest {
 
 	@Test
 	void fallsBackToDatabaseWhenCacheUnavailable() {
-		LinkEntity link = new LinkEntity("active", "https://example.com", NOW, NOW.plusSeconds(60), "owner", false);
+		LinkEntity link = new LinkEntity("active", "https://example.com", NOW, NOW.plusSeconds(60), false);
 		when(cache.get("active")).thenReturn(CacheLookup.status(CacheLookup.Status.UNAVAILABLE));
 		when(repository.findById("active")).thenReturn(Optional.of(link));
 		LinkResolver resolver = new LinkResolver(cache, repository, Clock.fixed(NOW, ZoneOffset.UTC));
@@ -61,6 +62,16 @@ class LinkResolverTest {
 	void unavailableDatabaseReturnsServiceUnavailable() {
 		when(cache.get("unknown")).thenReturn(CacheLookup.status(CacheLookup.Status.MISS));
 		when(repository.findById("unknown")).thenThrow(new DataAccessResourceFailureException("offline"));
+		LinkResolver resolver = new LinkResolver(cache, repository, Clock.fixed(NOW, ZoneOffset.UTC));
+
+		assertThatThrownBy(() -> resolver.resolve("unknown")).isInstanceOf(ApiException.class)
+				.extracting(exception -> ((ApiException) exception).getStatus().value()).isEqualTo(503);
+	}
+
+	@Test
+	void unavailableDatabaseTransactionReturnsServiceUnavailable() {
+		when(cache.get("unknown")).thenReturn(CacheLookup.status(CacheLookup.Status.MISS));
+		when(repository.findById("unknown")).thenThrow(new CannotCreateTransactionException("offline"));
 		LinkResolver resolver = new LinkResolver(cache, repository, Clock.fixed(NOW, ZoneOffset.UTC));
 
 		assertThatThrownBy(() -> resolver.resolve("unknown")).isInstanceOf(ApiException.class)

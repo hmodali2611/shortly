@@ -5,3 +5,5 @@
 target/
 *.iml
 *.log
+/CHECKLIST.md
+/src/main/resources/static/design-demo.html

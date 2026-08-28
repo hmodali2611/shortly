@@ -26,22 +26,17 @@ public class LinkEntity {
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
-	@Column(name = "owner_key_id", length = 64, nullable = false)
-	private String ownerKeyId;
-
 	@Column(name = "is_custom_alias", nullable = false)
 	private boolean customAlias;
 
 	protected LinkEntity() {
 	}
 
-	public LinkEntity(String shortCode, String targetUrl, Instant createdAt, Instant expiresAt, String ownerKeyId,
-			boolean customAlias) {
+	public LinkEntity(String shortCode, String targetUrl, Instant createdAt, Instant expiresAt, boolean customAlias) {
 		this.shortCode = shortCode;
 		this.targetUrl = targetUrl;
 		this.createdAt = createdAt;
 		this.expiresAt = expiresAt;
-		this.ownerKeyId = ownerKeyId;
 		this.customAlias = customAlias;
 	}
 
@@ -63,10 +58,6 @@ public class LinkEntity {
 
 	public Instant getDeletedAt() {
 		return deletedAt;
-	}
-
-	public String getOwnerKeyId() {
-		return ownerKeyId;
 	}
 
 	public boolean isCustomAlias() {

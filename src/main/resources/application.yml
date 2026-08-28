@@ -15,7 +15,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      timeout: 1s
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:200ms}
+      timeout: ${REDIS_TIMEOUT:200ms}
 
 server:
   shutdown: graceful
@@ -34,6 +35,7 @@ logging:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+    version: 5.32.14
 
 app:
   base-url: ${APP_BASE_URL:http://localhost:8080}
@@ -42,10 +44,11 @@ app:
   cache:
     default-ttl: ${CACHE_DEFAULT_TTL:PT24H}
     negative-ttl: ${CACHE_NEGATIVE_TTL:PT30S}
+    circuit-breaker:
+      failure-threshold: ${CACHE_CIRCUIT_FAILURE_THRESHOLD:3}
+      open-duration: ${CACHE_CIRCUIT_OPEN_DURATION:PT5S}
   analytics:
     queue-capacity: ${ANALYTICS_QUEUE_CAPACITY:10000}
     ip-hash-secret: ${ANALYTICS_IP_HASH_SECRET:local-development-only}
   rate-limit:
     creates-per-minute: ${CREATE_RATE_LIMIT:60}
-  security:
-    api-keys: ${APP_API_KEYS:dev-key}

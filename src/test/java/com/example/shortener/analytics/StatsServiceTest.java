@@ -3,8 +3,8 @@ package com.example.shortener.analytics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+@SuppressWarnings("null")
 class StatsServiceTest {
 
 	@Test
@@ -27,12 +28,14 @@ class StatsServiceTest {
 		Instant now = Instant.parse("2026-08-27T12:00:00Z");
 		JdbcTemplate jdbc = mock(JdbcTemplate.class);
 		LinkService links = mock(LinkService.class);
-		when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(12L, 7L, 3L);
 		when(jdbc.queryForObject(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(invocation -> {
 			RowMapper<Object> mapper = invocation.getArgument(1);
 			ResultSet resultSet = mock(ResultSet.class);
-			when(resultSet.getTimestamp(1)).thenReturn(Timestamp.from(now.minusSeconds(60)));
-			when(resultSet.getTimestamp(2)).thenReturn(Timestamp.from(now));
+			when(resultSet.getLong(1)).thenReturn(12L);
+			when(resultSet.getLong(2)).thenReturn(7L);
+			when(resultSet.getLong(3)).thenReturn(3L);
+			when(resultSet.getTimestamp(4)).thenReturn(Timestamp.from(now.minusSeconds(60)));
+			when(resultSet.getTimestamp(5)).thenReturn(Timestamp.from(now));
 			return mapper.mapRow(resultSet, 0);
 		});
 		when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
@@ -40,9 +43,10 @@ class StatsServiceTest {
 				.thenReturn(List.of(new AnalyticsResponse.Breakdown("browser", 9L)));
 		StatsService service = new StatsService(jdbc, links, Clock.fixed(now, ZoneOffset.UTC));
 
-		AnalyticsResponse response = service.get("code", "owner");
+		AnalyticsResponse response = service.get("code");
 
-		verify(links).metadata("code", "owner");
+		verify(links).metadata("code");
+		verify(jdbc, times(1)).queryForObject(anyString(), any(RowMapper.class), any(Object[].class));
 		assertThat(response.totalClicks()).isEqualTo(12);
 		assertThat(response.uniqueVisitors()).isEqualTo(7);
 		assertThat(response.clicksLast24h()).isEqualTo(3);

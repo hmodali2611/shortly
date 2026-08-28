@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create short, memorable links in seconds">
+  <title>Shortly | URL Shortener</title>
+  <style>
+    :root { --navy:#17213a; --blue:#2563eb; --blue-dark:#1748c7; --blue-soft:#eef4ff; --ink:#1d2739; --muted:#657084; --line:#dce2ea; --page:#f5f7fa; --surface:#fff; --success:#087f5b; --danger:#c92a2a; }
+    * { box-sizing:border-box; }
+    html { min-width:320px; }
+    body { min-height:100vh; margin:0; color:var(--ink); background:var(--page); font-family:"Avenir Next",Avenir,"Century Gothic",sans-serif; letter-spacing:0; }
+    button,input { font:inherit; letter-spacing:0; }
+    .app-header { height:68px; padding:0 clamp(18px,3vw,40px); border-bottom:1px solid var(--line); background:var(--surface); display:flex; align-items:center; justify-content:space-between; gap:24px; }
+    .brand { color:var(--navy); font-size:24px; font-weight:800; text-decoration:none; }
+    .brand-mark { color:var(--blue); }
+    .header-links { display:flex; align-items:center; gap:12px; }
+    .header-links a { padding:9px 12px; color:var(--ink); font-size:14px; font-weight:650; text-decoration:none; }
+    .header-links a:hover { color:var(--blue); }
+    .app-shell { min-height:calc(100vh - 68px); display:grid; grid-template-columns:224px minmax(0,1fr); }
+    .sidebar { padding:26px 16px; border-right:1px solid var(--line); background:var(--surface); }
+    .sidebar-label { margin:0 12px 10px; color:#8a94a6; font-size:11px; font-weight:750; text-transform:uppercase; }
+    .sidebar a { min-height:44px; margin-bottom:5px; padding:0 12px; border-radius:6px; color:#4b5567; display:flex; align-items:center; gap:11px; font-size:14px; font-weight:650; text-decoration:none; }
+    .sidebar a:hover,.sidebar a.active { color:var(--blue); background:var(--blue-soft); }
+    .nav-icon { width:20px; color:currentColor; font-size:18px; line-height:1; text-align:center; }
+    main { min-width:0; padding:clamp(30px,5vw,64px) clamp(20px,6vw,88px) 72px; }
+    .workspace { width:min(920px,100%); }
+    .eyebrow { margin:0 0 9px; color:var(--blue); font-size:13px; font-weight:750; }
+    h1 { margin:0; color:var(--navy); font-size:46px; line-height:1.12; letter-spacing:0; }
+    .intro { margin:13px 0 30px; color:var(--muted); font-size:17px; line-height:1.55; }
+    .shortener { padding:clamp(20px,4vw,34px); border:1px solid var(--line); border-radius:8px; background:var(--surface); box-shadow:0 10px 30px rgba(23,33,58,.07); }
+    .field-label { display:block; margin-bottom:9px; color:var(--navy); font-size:14px; font-weight:750; }
+    .primary-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+    input { width:100%; min-height:52px; padding:12px 15px; border:1px solid #b9c2d0; border-radius:5px; color:var(--ink); background:#fff; font-size:16px; outline:none; transition:border-color .16s,box-shadow .16s; }
+    input::placeholder { color:#929bad; }
+    input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.14); }
+    .primary-button,.copy-button { min-height:52px; padding:0 24px; border:1px solid var(--blue); border-radius:5px; color:#fff; background:var(--blue); cursor:pointer; font-weight:750; }
+    .primary-button:hover { border-color:var(--blue-dark); background:var(--blue-dark); }
+    .primary-button:disabled { cursor:wait; opacity:.65; }
+    details { margin-top:18px; }
+    summary { width:fit-content; color:var(--blue); cursor:pointer; font-size:14px; font-weight:700; }
+    .options { margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .options label { color:var(--muted); font-size:13px; font-weight:700; }
+    .options input { min-height:46px; margin-top:7px; font-size:14px; }
+    .message { min-height:21px; margin:15px 0 0; color:var(--success); font-size:13px; }
+    .message:empty { min-height:0; margin-top:0; }
+    .message.error { color:var(--danger); }
+    .result { margin-top:22px; padding:20px; border:1px solid #bcd2ff; border-radius:6px; background:var(--blue-soft); }
+    .result[hidden] { display:none; }
+    .result-label { margin:0 0 10px; color:var(--muted); font-size:12px; font-weight:750; text-transform:uppercase; }
+    .result-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .result a { min-width:0; color:var(--blue-dark); font-size:24px; font-weight:750; overflow-wrap:anywhere; }
+    .copy-button { min-height:42px; padding:0 18px; flex:0 0 auto; }
+    .copy-button.copied { border-color:var(--success); background:var(--success); }
+    .benefits { margin-top:30px; display:grid; grid-template-columns:repeat(3,1fr); gap:1px; border:1px solid var(--line); background:var(--line); }
+    .benefit { min-width:0; padding:20px; background:var(--surface); }
+    .benefit strong { display:block; margin-bottom:6px; color:var(--navy); font-size:14px; }
+    .benefit span { color:var(--muted); font-size:13px; line-height:1.45; }
+    @media (max-width:760px) { .app-shell{display:block}.sidebar{padding:8px 14px;border-right:0;border-bottom:1px solid var(--line);display:flex;gap:4px;overflow-x:auto}.sidebar-label{display:none}.sidebar a{min-width:max-content;margin:0}main{padding-top:36px} }
+    @media (max-width:560px) { .app-header{height:60px}.app-shell{min-height:calc(100vh - 60px)}h1{font-size:34px}.primary-row{grid-template-columns:1fr}.primary-button{width:100%}.options,.benefits{grid-template-columns:1fr}.result-row{align-items:stretch;flex-direction:column}.result a{font-size:18px}.copy-button{width:100%} }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Shortly home"><span class="brand-mark">short</span>ly</a>
+    <nav class="header-links" aria-label="Utility navigation">
+      <a href="/swagger-ui.html">API docs</a>
+    </nav>
+  </header>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <p class="sidebar-label">Workspace</p>
+      <a class="active" href="/" aria-current="page"><span class="nav-icon" aria-hidden="true">&#8599;</span>Shorten a link</a>
+      <a href="/dashboard.html"><span class="nav-icon" aria-hidden="true">&#9638;</span>Analytics</a>
+      <a href="/swagger-ui.html"><span class="nav-icon" aria-hidden="true">{ }</span>Developer API</a>
+    </aside>
+    <main>
+      <div class="workspace">
+        <p class="eyebrow">Link management</p>
+        <h1>Make every link easier to share.</h1>
+        <p class="intro">Paste a long URL and turn it into a clean, memorable short link.</p>
+        <section class="shortener" aria-label="URL shortener">
+          <form id="shorten-form">
+            <label class="field-label" id="shortener-title" for="target-url">Paste your long URL</label>
+            <div class="primary-row">
+              <input id="target-url" name="targetUrl" type="url" required maxlength="2048" placeholder="https://example.com/your-long-link" autocomplete="url">
+              <button class="primary-button" id="submit-button" type="submit">Shorten link</button>
+            </div>
+            <details>
+              <summary>Customize your link</summary>
+              <div class="options">
+                <label for="custom-alias">Custom back-half
+                  <input id="custom-alias" name="customAlias" maxlength="32" pattern="[A-Za-z0-9_\-]{3,32}" placeholder="your-alias">
+                </label>
+                <label for="expires-at">Expiration date
+                  <input id="expires-at" name="expiresAt" type="datetime-local">
+                </label>
+              </div>
+            </details>
+          </form>
+          <div class="result" id="result" hidden>
+            <p class="result-label">Your short link is ready</p>
+            <div class="result-row">
+              <a id="short-url" href="#" target="_blank" rel="noopener"></a>
+              <button class="copy-button" id="copy-button" type="button">Copy link</button>
+            </div>
+          </div>
+          <p class="message" id="message" role="status" aria-live="polite"></p>
+        </section>
+        <section class="benefits" aria-label="Service highlights">
+          <div class="benefit"><strong>Fast redirects</strong><span>Links resolve through a cache-first redirect path.</span></div>
+          <div class="benefit"><strong>Custom aliases</strong><span>Create a recognizable link people can trust.</span></div>
+          <div class="benefit"><strong>Built-in analytics</strong><span>Review clicks, visitors, referrers, and devices.</span></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    const form = document.getElementById("shorten-form");
+    const submitButton = document.getElementById("submit-button");
+    const result = document.getElementById("result");
+    const shortUrl = document.getElementById("short-url");
+    const message = document.getElementById("message");
+    const copyButton = document.getElementById("copy-button");
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      submitButton.disabled = true;
+      submitButton.textContent = "Shortening...";
+      copyButton.classList.remove("copied");
+      copyButton.textContent = "Copy link";
+      message.className = "message";
+      message.textContent = "";
+      result.hidden = true;
+
+      const customAlias = form.elements.customAlias.value.trim();
+  const expiresAt = form.elements.expiresAt.value;
+      const payload = { targetUrl: form.elements.targetUrl.value.trim() };
+      if (customAlias) payload.customAlias = customAlias;
+  if (expiresAt) payload.expiresAt = new Date(expiresAt).toISOString();
+
+      try {
+        const response = await fetch("/api/v1/links", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || data.message || `Request failed: ${response.status}`);
+        shortUrl.href = data.shortUrl;
+        shortUrl.textContent = data.shortUrl;
+        result.hidden = false;
+        message.textContent = "Short link created successfully.";
+      } catch (error) {
+        message.className = "message error";
+        message.textContent = error.message;
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Shorten link";
+      }
+    });
+
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(shortUrl.textContent);
+        copyButton.classList.add("copied");
+        copyButton.textContent = "Copied";
+        message.textContent = "Copied to clipboard.";
+      } catch {
+        message.className = "message error";
+        message.textContent = "Could not copy automatically. Select the link and copy it manually.";
+      }
+    });
+  </script>
+</body>
+</html>

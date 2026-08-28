@@ -14,6 +14,15 @@ import org.springframework.stereotype.Component;
 public class UrlSafetyValidator {
 
 	private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
+	private final HostResolver hostResolver;
+
+	public UrlSafetyValidator() {
+		this(InetAddress::getAllByName);
+	}
+
+	UrlSafetyValidator(HostResolver hostResolver) {
+		this.hostResolver = hostResolver;
+	}
 
 	public void validate(String targetUrl) {
 		URI uri;
@@ -28,12 +37,12 @@ public class UrlSafetyValidator {
 			throw rejected("Target must be an HTTP(S) URL without embedded credentials");
 		}
 		String normalizedHost = host.toLowerCase(Locale.ROOT);
-		if (!normalizedHost.contains(".") || normalizedHost.endsWith(".local")
+		if ((!normalizedHost.contains(".") && !normalizedHost.contains(":")) || normalizedHost.endsWith(".local")
 				|| normalizedHost.endsWith(".internal")) {
 			throw rejected("Internal and unqualified hosts are not allowed");
 		}
 		try {
-			for (InetAddress address : InetAddress.getAllByName(host)) {
+			for (InetAddress address : hostResolver.resolve(host)) {
 				if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
 						|| address.isSiteLocalAddress() || address.isMulticastAddress()) {
 					throw rejected("Target resolves to a non-public address");
@@ -46,5 +55,10 @@ public class UrlSafetyValidator {
 
 	private ApiException rejected(String message) {
 		return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "unsafe-target", message);
+	}
+
+	@FunctionalInterface
+	interface HostResolver {
+		InetAddress[] resolve(String host) throws UnknownHostException;
 	}
 }

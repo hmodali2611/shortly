@@ -19,9 +19,9 @@ public class RateLimiter {
 		this.limit = limit;
 	}
 
-	public void checkCreate(String ownerKeyId) {
+	public void checkCreate(String clientId) {
 		long window = Instant.now().getEpochSecond() / 60;
-		String key = "rate:create:" + ownerKeyId + ":" + window;
+		String key = "rate:create:" + clientId + ":" + window;
 		try {
 			Long count = redis.opsForValue().increment(key);
 			if (count != null && count == 1) {
