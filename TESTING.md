@@ -7,14 +7,16 @@
 Latest local run:
 
 - Build: passed
-- Tests: 41 run, 0 failures, 0 errors, 0 skipped in the Docker-backed run
+- Tests: 49 run, 0 failures, 0 errors, 0 skipped in the Docker-backed run
 - Static analysis: 0 SpotBugs warnings/errors
-- Formatting: 44 Java files clean
-- Critical-service line coverage: 95.8% (158/165), independently measured from the JaCoCo report
+- Formatting: 46 Java files clean
+- Critical-service line coverage: 95.8% (160/167), independently measured from the JaCoCo report
 
-The tests cover URL safety, anonymous metadata access, aliases, generated-code collision retry, create/metadata/delete behavior, cache failure fallback, expiry-bounded cache TTL, queue saturation, and stats aggregation. The Testcontainers integration test exercises create, redirect, metadata, and deletion against PostgreSQL and Redis; stats and dependency health were exercised separately during the documented runtime smoke checks.
+The tests cover URL safety, anonymous metadata access, aliases, generated-code collision retry, create/metadata/delete behavior, cache failure fallback, database-backed expiry, expiry-bounded cache TTL, queue saturation, and stats aggregation. The Testcontainers integration test exercises create, redirect, metadata, deletion, and an expired PostgreSQL row returning `410` on a cache miss; stats and dependency health were exercised separately during the documented runtime smoke checks.
 
 `RedirectControllerHotPathTest` closes two properties that were previously manual observation only. `redirectStaysFastWhileClickFlushIsStalledOnTheDatabase` (T-11) blocks a mocked `ClickFlusher` batch write mid-flight and asserts a sequence of 50 redirects still returns in under two seconds while a full queue drops rather than blocks — proving NFR-4 rather than inferring it from the bounded-queue implementation. `neverLogsRawClientAddressOrTargetUrl` (T-22/NFR-6) attaches a Logback `ListAppender` to the root logger around a redirect carrying a marked target URL and a synthetic client address, then asserts neither value appears in any captured log message or MDC context. Both run without Docker.
+
+Three more previously "planned" acceptance criteria are now automated. `RateLimiterTest` (T-9, NFR-2) mocks the Redis counter to assert `429` over the configured limit and `503` when Redis itself fails. `AliasValidatorTest` (T-14) asserts a 32-character alias round-trips through the validator and a 33-character one is rejected — the boundary the schema's `VARCHAR(32)` column depends on, and the same boundary a past AI-generated migration got wrong (`EXECUTION-LOG.md` ledger #3). This closes the validator half of T-14 only; a database-level round-trip proving the schema column itself holds 32 characters remains unautomated. `GlobalExceptionHandlerTest` (T-23) asserts the RFC 7807 envelope shape — `status`, `title`, `detail`, `type`, `instance` — for a representative `404` and `503`.
 
 The Flyway migration test applies V1 and V2, inserts representative link and click data, then applies V3 and verifies that both records survive while the obsolete ownership column and index are removed.
 

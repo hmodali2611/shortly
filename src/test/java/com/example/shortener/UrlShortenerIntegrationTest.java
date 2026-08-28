@@ -114,6 +114,21 @@ class UrlShortenerIntegrationTest {
 		assertThat(rest.getForEntity(url("/v3/api-docs"), JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.OK);
 	}
 
+	@Test
+	void expiredDatabaseLinkReturnsGoneOnCacheMiss() {
+		Instant now = Instant.now();
+		jdbcTemplate.update(
+				"INSERT INTO links (short_code, target_url, created_at, expires_at, is_custom_alias) VALUES (?, ?, ?, ?, ?)",
+				"expired-database-link", "https://example.com/expired", Timestamp.from(now.minusSeconds(120)),
+				Timestamp.from(now.minusSeconds(60)), false);
+
+		ResponseEntity<JsonNode> response = rest.getForEntity(url("/expired-database-link"), JsonNode.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+		assertThat(Objects.requireNonNull(response.getBody()).path("type").asText())
+				.isEqualTo("https://sho.rt/errors/link-gone");
+	}
+
 	private String url(String path) {
 		return "http://localhost:" + port + path;
 	}

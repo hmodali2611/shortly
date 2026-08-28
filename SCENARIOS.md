@@ -67,7 +67,7 @@ The generalisable lesson, applied to every later prompt: **AI is reliable on str
 
 - Unit tests verify forced collision retry and retry exhaustion behavior.
 - The Testcontainers integration test covers create, redirect, metadata, stats, delete, and health when Docker is available.
-- Latest local result: all 41 tests pass with zero skips in Docker-backed verification.
+- Latest local result: all 49 tests pass with zero skips in Docker-backed verification.
 - A unique-constraint mutation check remains a proposed strengthening exercise; it is not claimed as executed.
 
 ## 1.5 Risks and sign-off

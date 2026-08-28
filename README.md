@@ -38,7 +38,7 @@ docker compose --profile test run --rm tests
 ./mvnw -Psecurity dependency-check:check
 ```
 
-`verify` runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. The Compose test command provides Docker to Testcontainers and currently completes 41 tests with zero skips. CI runs `verify` on Java 25.
+`verify` runs unit/integration tests, Spotless, SpotBugs, and an enforced 80% aggregate line-coverage floor over critical service classes. The Compose test command provides Docker to Testcontainers and currently completes 49 tests with zero skips. CI runs `verify` on Java 25.
 
 Optional load smoke test (requires k6 and a running service):
 

@@ -274,7 +274,7 @@ CREATE INDEX idx_clicks_code_time ON click_events (short_code, occurred_at DESC)
 
 Managed by **Flyway** so schema changes are versioned and reviewable rather than hidden in JPA auto-DDL.
 
-**`VARCHAR(32)`, sized to the alias rule, not the generated code.** Generated codes are 8 characters; the alias charset rule in §8 permits up to 32. `AliasValidator` owns the application limit and the migration independently uses 32; T-14 remains planned to detect future drift between them.
+**`VARCHAR(32)`, sized to the alias rule, not the generated code.** Generated codes are 8 characters; the alias charset rule in §8 permits up to 32. `AliasValidator` owns the application limit and the migration independently uses 32; T-14 automates the validator half of that boundary (§11), though a database-level round-trip proving the column itself accepts 32 characters remains unautomated.
 
 **The FK is retained, and the archival job in §10 respects it.** `click_events` references `links`, so the cleanup job cannot hard-delete link rows while their events remain. It runs children-first inside one transaction — archive the code's events, then the link row — and never issues an unqualified `DELETE FROM links`. `ON DELETE CASCADE` was rejected: silently discarding click history as a side effect of a lifecycle job is exactly the kind of data loss that should require an explicit statement.
 
@@ -500,7 +500,7 @@ This is the strongest differentiator in the build, and most reference designs sk
 
 **Rate limiting.** Redis-backed fixed window per hashed client IP on creation; requests over the limit return `429`. Hashing avoids placing raw addresses in Redis keys. Clients behind one NAT share a quota, and proxy deployments must supply a trusted client-address strategy rather than accepting spoofable forwarding headers. This is Redis's second job — one dependency serving two requirements, which is part of why it earns its place. The prototype does not emit `Retry-After`; adding it is a client-usability improvement.
 
-*Known property of fixed windows:* a caller can spend a full quota at the end of one window and another at the start of the next, producing up to **2× the nominal rate** across the boundary. Accepted for the prototype — the limiter exists to bound abuse and protect the write path, not to meter billing, and a 2× burst does neither harm at 4 writes/sec peak. A sliding-window-counter variant closes it with one extra Redis key and interpolation, and is the stated upgrade if the limit ever becomes a commercial boundary rather than a safety one. T-9 records manual runtime evidence for the limit; boundary behavior remains outside the current automated scope.
+*Known property of fixed windows:* a caller can spend a full quota at the end of one window and another at the start of the next, producing up to **2× the nominal rate** across the boundary. Accepted for the prototype — the limiter exists to bound abuse and protect the write path, not to meter billing, and a 2× burst does neither harm at 4 writes/sec peak. A sliding-window-counter variant closes it with one extra Redis key and interpolation, and is the stated upgrade if the limit ever becomes a commercial boundary rather than a safety one. T-9 automates the `429`/`503` limit and failure behavior against a mocked Redis counter; the window-boundary burst itself remains outside the current automated scope.
 
 **Known limitation — DNS rebinding.** Validation at creation and resolution at redirect are different moments. An attacker controlling DNS can pass validation and later point at an internal address. Full mitigation means resolving and pinning at redirect time. Documented rather than built; a stated gap is a stronger signal than an unstated one.
 
@@ -522,35 +522,40 @@ Redirect publishes to a **bounded** in-memory queue and returns immediately. A `
 
 ## 11. Testing
 
-One lifecycle integration test runs against **real Postgres and Redis via Testcontainers**. Focused unit tests use mocks where the behavior belongs to a service boundary. The table distinguishes executable automation from manual evidence, partial checks, and planned acceptance criteria; a T-ID does not imply that an automated test exists.
+One lifecycle integration test runs against **real Postgres and Redis via Testcontainers**. Focused unit tests use mocks where the behavior belongs to a service boundary. The matrix contains executed automated or manual evidence; partial checks state their remaining gap explicitly.
 
 | ID | Acceptance criterion | Proves | Evidence status |
 |---|---|---|---|
 | T-1 | Create then redirect, end to end | FR-1, FR-2 | Automated: `UrlShortenerIntegrationTest` |
-| T-2 | Concurrent identical alias, 2 threads | FR-7, §8 | Planned; mutation check not executed |
 | T-3 | Generated-code collision retries safely | FR-6 | Automated unit test with mocked generator/repository |
-| T-4 | Expired database-backed link returns `410` | FR-8 | Planned; warm-cache expiry is covered by T-5 |
+| T-4 | Expired database-backed link returns `410` | FR-8 | Automated: `UrlShortenerIntegrationTest` inserts an expired PostgreSQL row and verifies `410` plus the `link-gone` problem type on a cache miss |
 | T-5 | Expired link with warm cache still returns `410`; cache TTL cannot outlive expiry | FR-8, NFR-1, §9 TTL rule | Automated unit tests |
 | T-6 | Redis failure falls through to Postgres | NFR-1 | Automated unit fallback plus manual Docker fault injection |
 | T-7 | `javascript:` / `data:` targets rejected | NFR-3, §10 | Automated parameterized unit test |
 | T-8 | Metadata IP and private targets rejected | NFR-3, §10 | Automated parameterized unit test |
-| T-9 | Rate limit returns `429`; unavailable limiter returns `503` | NFR-2 | Manual runtime evidence; automated test planned |
+| T-9 | Rate limit returns `429`; unavailable limiter returns `503` | NFR-2 | Automated: `RateLimiterTest` against a mocked Redis counter; window-boundary burst behavior remains manual/accepted |
 | T-10 | Deleted link returns `410`; unknown link returns `404` | FR-5, FR-8 | Automated integration and unit tests |
 | T-11 | Analytics sink stalled; redirect latency remains flat | NFR-4 | Automated: `RedirectControllerHotPathTest` blocks the batch write and asserts 50 redirects return without waiting on it |
 | T-12 | Load test p95 measured and recorded | NFR-1 | Manual k6 evidence in `TESTING.md` |
 | T-13 | Postgres stopped: cached codes return `302`, uncached reads and creates return `503` | §9 failure behavior | Manual Docker fault injection plus automated exception mapping |
-| T-14 | Max-length alias round-trips and validator limit fits schema | FR-7, §5, §8 | Planned |
+| T-14 | Max-length alias round-trips and validator limit fits schema | FR-7, §5, §8 | Partially automated: `AliasValidatorTest` proves the 32-character validator boundary; a database round-trip proving the schema column accepts it remains planned |
 | T-15 | Five generated collisions produce `503` | FR-6, §6 | Partially automated; status and exact attempts are asserted, metric is not implemented |
-| T-16 | Archival removes an expired clicked link without FK failure | FR-8, §5, §10 | Planned; archival job is outside the prototype |
 | T-17 | Stats returns totals, timestamps, breakdowns, and `asOf` | FR-3 | Automated unit test |
 | T-18 | Metadata is anonymous and excludes ownership credentials | FR-4 | Automated unit and integration tests |
 | T-19 | Liveness stays up while readiness reflects dependency failure | FR-9 | Manual runtime evidence |
 | T-20 | Generated OpenAPI contains the implemented surface and no authentication requirement | FR-10 | Manual contract/runtime comparison |
 | T-21 | Clean-source Compose smoke test starts the application | NFR-5 | Manual isolated-source validation |
 | T-22 | Logs are JSON, correlated, and redact raw IPs and sensitive URL values | NFR-6 | Automated on the redirect path: `RedirectControllerHotPathTest` asserts a target URL and client address never appear in captured log output; other call sites remain manual observation |
-| T-23 | Representative failures use the RFC 7807 schema | NFR-7 | Planned automated contract assertion |
+| T-23 | Representative failures use the RFC 7807 schema | NFR-7 | Automated: `GlobalExceptionHandlerTest` asserts the envelope shape for a representative `404` and `503` |
 | T-24 | Environment overrides load and repository secret review is clean | NFR-8 | Manual configuration and repository review |
 | T-25 | Flyway initializes fresh storage and upgrades prior schema | NFR-9 | Automated: fresh application migration and populated V1/V2-to-V3 upgrade test |
+
+### Out-of-scope validation
+
+These reserved criteria are not counted as tests or claimed as executed:
+
+- **T-2 — concurrent identical aliases:** a true two-thread constraint test and mutation check would strengthen the database uniqueness proof. The generated sequential version was rejected because it did not exercise the race.
+- **T-16 — archival foreign-key ordering:** requires the retention/archive job, which is intentionally not implemented in this prototype. The production design must archive click children before link parents.
 
 **Quality gates:** `mvn verify` runs Spotless (format), SpotBugs (static analysis), and JaCoCo (80% coverage floor on critical service classes). OWASP Dependency-Check runs separately through the `security` Maven profile because it refreshes external advisory data.
 
@@ -567,7 +572,7 @@ Sequenced so a runnable system exists early and each step has an acceptance crit
 | 3 | `POST /links` + `GET /{code}`, no cache, no analytics | **First runnable end-to-end**, T-1 |
 | 4 | `UrlSafetyValidator` | T-7, T-8 |
 | 5 | Expiry + delete | T-4, T-10 |
-| 6 | Custom aliases | T-2 |
+| 6 | Custom aliases | Validator tests and database uniqueness constraint |
 | 7 | **Redis cache** | T-5, T-6 |
 | 8 | Analytics + stats endpoint | T-11 |
 | 9 | Rate limiting | T-9 |

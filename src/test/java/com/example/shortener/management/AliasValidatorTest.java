@@ -21,4 +21,18 @@ class AliasValidatorTest {
 		assertThatThrownBy(() -> validator.validate("api")).isInstanceOf(ApiException.class);
 		assertThatThrownBy(() -> validator.validate("malware-link")).isInstanceOf(ApiException.class);
 	}
+
+	@Test
+	void acceptsAnAliasAtTheMaximumLength() {
+		String maxLengthAlias = "a".repeat(AliasValidator.MAX_LENGTH);
+
+		assertThatCode(() -> validator.validate(maxLengthAlias)).doesNotThrowAnyException();
+	}
+
+	@Test
+	void rejectsAnAliasOneCharacterOverTheMaximumLength() {
+		String overLengthAlias = "a".repeat(AliasValidator.MAX_LENGTH + 1);
+
+		assertThatThrownBy(() -> validator.validate(overLengthAlias)).isInstanceOf(ApiException.class);
+	}
 }
