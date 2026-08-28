@@ -328,7 +328,7 @@ Evidence from the latest local `./mvnw verify` run:
 | Build context | `.dockerignore` reduced normal workspace context from about 68 MB to 726 KB; image build passed | ✅ |
 | Stats query count | Summary aggregates consolidated into one query; endpoint reduced from six to three database round trips | ✅ |
 
-GitHub Actions runs `./mvnw --batch-mode verify` on Java 25. A passing hosted workflow still needs to be captured after the repository is pushed.
+GitHub Actions runs `./mvnw --batch-mode verify` on Java 25. The hosted build passed after the prompt-evidence commit was pushed, and a separate fresh clone reproduced the full 49-test gate locally.
 
 **High-impact changes requiring explicit engineer sign-off before merge**, regardless of gate status: anything in `security/`, any Flyway migration, any change to the code generator, any change to redirect-path failure handling, and any change that alters a documented status code. These are the areas where a passing test suite is weakest evidence — a green build proves the code does what the tests say, and in exactly these areas the risk is that the *tests* encode the wrong belief.
 
