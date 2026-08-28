@@ -89,7 +89,7 @@ The `RISK` line is why T-5 was written first. That ordering is the whole point o
 
 ## 4. Representative prompt evidence
 
-The exact vendor chat transcript is not a submission artifact. The SSRF sequence below was retained as a sanitized prompt iteration. The brownfield and ambiguous examples are explicitly labelled reconstructions from the contemporaneous task, design, disposition, and validation records; they preserve the constraints and decisions but are not presented as verbatim chat history.
+The original build's vendor chat transcript is not a submission artifact. The SSRF sequence below was retained as a sanitized prompt iteration. The brownfield, ambiguous, and task-level examples are explicitly labelled reconstructions from contemporaneous tasks, design decisions, dispositions, code, and validation records; they preserve intent and constraints but are not presented as verbatim chat history. §4.5 is different: it follows a later AI-pairing session prompt by prompt, with shorthand polished for readability.
 
 ### 4.1 Greenfield security — retained prompt iteration
 
@@ -164,7 +164,7 @@ For each ambiguity, give options, trade-offs, and the question a product owner
 must answer.
 ```
 
-The resulting options were normalized by the engineer: count successful `302` responses, expose eventual consistency through `asOf`, retain event rows, use a rotating HMAC-derived IP hash, and prefer bounded best-effort delivery over redirect failure.
+The resulting options were normalized by the engineer: count successful `302` responses, expose eventual consistency through `asOf`, retain event rows, use a configured HMAC secret with the day included in the message, and prefer bounded best-effort delivery over redirect failure.
 
 **Implementation prompt:**
 
@@ -183,6 +183,117 @@ stats include asOf; all existing redirect tests remain green.
 **Output and disposition:** the generated unbounded `LinkedBlockingQueue` was rejected because a stalled sink could exhaust the JVM and take down redirects. The bounded queue implementation was written under engineer control.
 
 **Validation:** queue-saturation, multi-batch, failed-write restoration, stats aggregation, and Docker-backed lifecycle tests. **Sign-off:** Harika Modali, 2026-08-27.
+
+### 4.4 Additional task prompts — polished reconstructions
+
+**Provenance:** these are representative reconstructions, not quotations. Each is grounded in the named ledger entry, resulting implementation, and validation evidence. They show the working prompt shape without claiming unavailable chat text as historical fact.
+
+#### Secure short-code refinement
+
+Grounded in ledger #2 and T-3/T-15.
+
+```
+Replace the generated short-code implementation after security review. Generate
+exactly eight characters from the Base62 alphabet with SecureRandom; do not use
+Random, sequential IDs, timestamps, or a Redis counter. Keep PostgreSQL's unique
+constraint authoritative and retry at most five generated-code collisions.
+
+Acceptance: alphabet and length tests pass; forced collisions retry; five
+collisions return 503; Redis remains outside the creation write path.
+```
+
+**Disposition:** accepted after the original `Random`-based output was rejected. The refinement preserved non-enumerability and bounded failure behavior.
+
+#### Schema-to-contract consistency review
+
+Grounded in ledger #3, `AliasValidator.MAX_LENGTH`, and `FlywayMigrationTest`.
+
+```
+Review the Flyway link schema against the API's custom-alias contract. Check
+column widths, nullability, indexes, and upgrade safety instead of reviewing SQL
+in isolation. A 32-character valid alias must fit without truncation. Preserve
+existing links and click events while removing obsolete ownership data.
+
+Acceptance: fresh migration succeeds; populated V1/V2 data survives V3; the
+ownership column and index are removed deliberately, not by destructive reset.
+```
+
+**Disposition:** edited. The review exposed the inherited `VARCHAR(16)` mismatch, corrected it to 32, and added a populated upgrade test.
+
+#### Transaction-safe cache invalidation
+
+Grounded in ledger #10 and `LinkServiceTest`.
+
+```
+Review link deletion for cache/database ordering races. PostgreSQL is
+authoritative, deletion is transactional, and a failed transaction must not
+evict a still-active mapping. Avoid a design where a concurrent cache miss can
+repopulate active data between eviction and commit.
+
+Acceptance: cache eviction occurs only after commit; rollback performs no
+eviction; deleted links continue to return 410.
+```
+
+**Disposition:** edited after review. Pre-commit eviction was replaced with transaction synchronization that evicts only after a successful commit.
+
+#### Degraded-mode validation
+
+Grounded in ledger #11–12, T-6/T-13, and the recorded fault-injection runs.
+
+```
+Design a failure test matrix for Redis and PostgreSQL independently. Do not
+treat all dependency failures alike: cache reads fail open to PostgreSQL, while
+the creation rate limiter fails closed. Preserve cached redirects when the
+database is unavailable and map uncached storage failures to 503.
+
+Measure warm-cache, cache-miss, sustained Redis-outage, and recovered latency.
+Recommend resilience code only when the measurements identify the bottleneck.
+```
+
+**Disposition:** accepted after measurement. The matrix exposed Redis failure detection as the degraded-path cost and justified the small cache-only circuit breaker.
+
+#### Authentication-model challenge
+
+Grounded in ledger #17 and migration V3.
+
+```
+Evaluate whether a shared static API key plus a hashed owner reference provides
+real per-caller authorization for metadata, analytics, and deletion. Include how
+the browser dashboard would obtain the key and whether different users can be
+distinguished. Prefer removing misleading security over retaining a control
+that cannot enforce the stated ownership boundary.
+
+Return a keep, redesign, or remove decision with migration impact.
+```
+
+**Disposition:** rejected and removed. A shared key could not represent ownership and could not safely be embedded in the dashboard; the production path now requires authenticated identities and revocable per-user tokens.
+
+#### Evidence reconciliation
+
+Grounded in ledger #5, #13, #16, the 49-test gate, and the final documentation review.
+
+```
+Audit every claimed acceptance criterion against executable tests or recorded
+manual evidence. Do not infer execution from a T-ID, test name, coverage number,
+or stale Surefire report. Mark each item automated, manual, partial, or out of
+scope; preserve historical counts at the time they were recorded.
+
+Acceptance: the latest Maven summary, Java-file count, JaCoCo numerator and
+denominator, and documentation totals agree; unsupported claims are removed.
+```
+
+**Disposition:** accepted with corrections. It separated executable evidence from planned criteria, preserved the historical 39- and 41-test milestones, and recorded the current 49-test gate without rewriting earlier evidence.
+
+### 4.5 Post-build review session — prompts polished for readability
+
+**Provenance:** §4.1–4.4 contain retained or reconstructed original-build evidence. This section is different in kind: it follows an actual prompt sequence from a live AI-pairing session conducted after the initial build — a code-quality review pass that closed several of the "planned, not executed" gaps this document had been carrying. The prompts below are polished for readability (live chat shorthand — "do it," "leave it" — does not read well as a submission artifact) but preserve what was asked and in what order.
+
+| # | Prompt (polished) | What it produced | Disposition |
+|---|---|---|---|
+| a | "What are the highest-value fixes to close before this goes to review, given the remaining time budget?" | Reviewed the test table in `design.md` §11 and recommended closing T-11 (stalled-sink redirect latency) and T-22/NFR-6 (log redaction) as the two highest-value gaps, and explicitly recommended **against** building the `click_daily_agg` rollup or a mutation-testing framework given the remaining time budget. | Accepted — see ledger entry 13. |
+| b | "Implement those two fixes and update the affected documentation to match." | Generated `RedirectControllerHotPathTest`. The stalled-sink test's first version passed for the wrong reason: it stubbed `JdbcTemplate.batchUpdate` to return `int[]`, but the real overload returns `int[][]`, so a `ClassCastException` was silently caught by `ClickFlusher`'s own failure-handling path. | ❌ → ✏️ — found by tracing the drop count by hand against expected queue-capacity arithmetic, not by a test failing loudly. Corrected mock return type. Documented in entry 13. |
+
+**Generalization.** The mock-typing bug in (b) was caught by re-deriving the expected queue count by hand and comparing it against the actual output, not by a red test or an obvious error message. That is the same discipline §1's operating principle names for the original build ("no AI output is committed on the strength of looking correct"), applied here to reviewing AI-produced *review* work rather than first-pass generation. It is also the pattern §3's "Pattern worth naming" note describes: plausible, compiling, and wrong about a property nothing in the type system or a passing test enforces.
 
 ---
 
