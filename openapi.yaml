@@ -70,6 +70,7 @@ paths:
               schema: { $ref: '#/components/schemas/LinkResponse' }
         '400': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
         '429': { $ref: '#/components/responses/Problem' }
         '503': { $ref: '#/components/responses/Problem' }
   /api/v1/links/{shortCode}:
