@@ -192,10 +192,10 @@ The failure mode here is not building it wrong. It is **building something plaus
 
 | # | Decision | Rationale | Cost, accepted |
 |---|---|---|---|
-| 1 | A click is a successful `302` only. Bots flagged, not dropped. | Expired/deleted/invalid are not engagement. Filtering stays a query concern so raw data remains honest. | Bot detection is heuristic and will be imperfect |
+| 1 | A click is a successful `302` only. User-agent data is retained without bot classification. | Expired/deleted/invalid are not engagement. The prototype preserves queryable request facts without claiming a classifier it does not implement. | Bot traffic remains included unless a later query classifies it |
 | 2 | Eventually consistent; `asOf` in every response | Real-time would put a synchronous write on the hot path, violating NFR-4 | Callers see slightly stale numbers — made visible rather than hidden |
 | 3 | Per-click event rows, not a counter | Aggregates derive from events; events never derive from aggregates. A counter is a one-way door. | Storage: ~11B rows over 3 years (`design.md` §3) |
-| 4 | `HMAC-SHA256(daily_salt, ip)`, rotated daily | Uniqueness without identity. A static salt is brute-forceable across the 2³² IPv4 space in minutes. | Uniqueness computable only within a day; multi-day uniques over-count |
+| 4 | `HMAC-SHA256(configured_secret, day || ip)` | A secret key protects against database-only offline guessing, while the date prevents direct equality from linking a visitor across days. | Secret compromise permits guessing for known dates; multi-day uniques over-count |
 | 5 | Best-effort. Bounded queue, dropped under extreme load. | Analytics loss is acceptable; a redirect outage is not. Dropping beats an OOM. | Unflushed clicks lost on crash — stated plainly, not buried |
 
 **Decision 3 is the one that would have been irreversible.** A counter column is cheap, obvious, and satisfies the requirement as literally stated. It also makes "clicks last week" permanently unanswerable, and by the time someone asks, the data to answer it was never recorded. Ambiguous requirements are dangerous less because they are unclear than because the cheap reading is often a one-way door.
@@ -220,7 +220,7 @@ A-01 click_events schema + Flyway                 (decision 3 embodied)
 
 ## 3.5 Validation
 
-- **T-11 is now executed.** `RedirectControllerHotPathTest#redirectStaysFastWhileClickFlushIsStalledOnTheDatabase` blocks a mocked batch write mid-flush and asserts 50 concurrent redirects still return, and a full queue drops rather than blocks the caller. Written after the fact — this was a documented gap the assignment asked to be closed, not part of the original scenario build — and it directly exercises `RedirectController` and `ClickRecorder`, not just the isolated queue. The first version of this test stubbed `JdbcTemplate.batchUpdate` to return a value typed `int[]`; the real overload returns `int[][]`, so the stub's `ClassCastException` was silently caught by `ClickFlusher`'s own failure-handling path, producing a test that passed for the wrong reason — it measured recovery-after-failure, not a genuinely stalled sink. Caught only by tracing the drop count by hand against the expected queue-capacity arithmetic, not by the assertion itself passing or failing. A small, concrete instance of this document's recurring point: generated test code needs the same scrutiny as generated production code.
+- **T-11 is now executed.** `RedirectControllerHotPathTest#redirectStaysFastWhileClickFlushIsStalledOnTheDatabase` blocks a mocked batch write mid-flush and asserts a sequence of 50 redirects returns without waiting for it, while a full queue drops rather than blocks the caller. Written after the fact — this was a documented gap the assignment asked to be closed, not part of the original scenario build — and it directly exercises `RedirectController` and `ClickRecorder`, not just the isolated queue. The first version of this test stubbed `JdbcTemplate.batchUpdate` to return a value typed `int[]`; the real overload returns `int[][]`, so the stub's `ClassCastException` was silently caught by `ClickFlusher`'s own failure-handling path, producing a test that passed for the wrong reason — it measured recovery-after-failure, not a genuinely stalled sink. Caught only by tracing the drop count by hand against the expected queue-capacity arithmetic, not by the assertion itself passing or failing. A small, concrete instance of this document's recurring point: generated test code needs the same scrutiny as generated production code.
 - **Queue-saturation unit test** — fills the bounded recorder, then asserts excess events are dropped and the drop counter increments. It verifies the backpressure policy, but does not measure redirect latency.
 - **Multi-batch flush tests** — one scheduled invocation drains multiple 500-event batches, up to the default 10,000-event queue bound, while failed database writes restore drained events.
 - **`asOf` is asserted** in the stats-service unit test, so eventual consistency is explicit in that response contract.
@@ -229,7 +229,7 @@ A-01 click_events schema + Flyway                 (decision 3 embodied)
 ## 3.6 Known limitations, stated rather than smoothed over
 
 - **`totalClicks` will become wrong** once the 90-day retention window truncates, because the prototype does not build the rollup to `click_daily_agg` (`design.md` §14.2). This is a correctness gap, not a performance one, and it is the largest divergence between the design and the running system.
-- **Bot flagging is user-agent heuristics.** It will miss anything that wants to be missed.
-- **Multi-day unique counts over-count** returning visitors — the deliberate cost of daily salt rotation.
+- **Bot classification is not implemented.** User-agent values remain available for later query-time classification, so current click totals include bot traffic.
+- **Multi-day unique counts over-count** returning visitors because date-separated hashes intentionally do not compare equal across days.
 
 **Signed off:** Harika Modali, 2026-08-27 — analytics schema migration and bounded best-effort queue behavior reviewed, including the accepted event-loss limitations.

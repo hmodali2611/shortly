@@ -2,21 +2,29 @@ package com.example.shortener.redirect;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * Guards Redis cache calls with a three-state breaker (closed/open/half-open).
+ * Calls are infrequent enough per request that a synchronized critical section
+ * costs nothing measurable over a lock-free implementation, so state is kept as
+ * plain fields behind {@code synchronized} rather than packed into atomics.
+ */
 @Component
 class RedisCircuitBreaker {
 
-	private static final long CLOSED = 0;
-	private static final long HALF_OPEN = -1;
-	private final AtomicInteger consecutiveFailures = new AtomicInteger();
-	private final AtomicLong openUntilEpochMilli = new AtomicLong(CLOSED);
+	private enum State {
+		CLOSED, OPEN, HALF_OPEN
+	}
+
 	private final Clock clock;
 	private final int failureThreshold;
 	private final Duration openDuration;
+
+	private State state = State.CLOSED;
+	private int consecutiveFailures;
+	private long openUntilEpochMilli;
 
 	RedisCircuitBreaker(Clock clock, @Value("${app.cache.circuit-breaker.failure-threshold}") int failureThreshold,
 			@Value("${app.cache.circuit-breaker.open-duration}") Duration openDuration) {
@@ -28,26 +36,30 @@ class RedisCircuitBreaker {
 		this.openDuration = openDuration;
 	}
 
-	boolean tryAcquire() {
-		long state = openUntilEpochMilli.get();
-		if (state == CLOSED) {
+	synchronized boolean tryAcquire() {
+		if (state == State.CLOSED) {
 			return true;
 		}
-		if (state == HALF_OPEN || clock.millis() < state) {
+		if (state == State.HALF_OPEN) {
 			return false;
 		}
-		return openUntilEpochMilli.compareAndSet(state, HALF_OPEN);
+		if (clock.millis() < openUntilEpochMilli) {
+			return false;
+		}
+		state = State.HALF_OPEN;
+		return true;
 	}
 
-	void recordSuccess() {
-		consecutiveFailures.set(0);
-		openUntilEpochMilli.set(CLOSED);
+	synchronized void recordSuccess() {
+		state = State.CLOSED;
+		consecutiveFailures = 0;
 	}
 
-	void recordFailure() {
-		if (openUntilEpochMilli.get() == HALF_OPEN || consecutiveFailures.incrementAndGet() >= failureThreshold) {
-			consecutiveFailures.set(0);
-			openUntilEpochMilli.set(clock.millis() + openDuration.toMillis());
+	synchronized void recordFailure() {
+		if (state == State.HALF_OPEN || ++consecutiveFailures >= failureThreshold) {
+			state = State.OPEN;
+			consecutiveFailures = 0;
+			openUntilEpochMilli = clock.millis() + openDuration.toMillis();
 		}
 	}
 }
